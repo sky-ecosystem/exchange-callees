@@ -7,7 +7,6 @@ import "dss-interfaces/Interfaces.sol";
 
 import { LockstakeDeploy } from "lib/lockstake/deploy/LockstakeDeploy.sol";
 import { LockstakeInit, LockstakeConfig, LockstakeInstance } from "lib/lockstake/deploy/LockstakeInit.sol";
-import { LockstakeMkr } from "lib/lockstake/src/LockstakeMkr.sol";
 import { LockstakeEngine } from "lib/lockstake/src/LockstakeEngine.sol";
 import { LockstakeClipper } from "lib/lockstake/src/LockstakeClipper.sol";
 import { LockstakeUrn } from "lib/lockstake/src/LockstakeUrn.sol";
@@ -16,7 +15,6 @@ import { GemMock } from "lib/lockstake/test/mocks/GemMock.sol";
 import { UsdsMock } from "lib/lockstake/test/mocks/UsdsMock.sol";
 import { UsdsJoinMock } from "lib/lockstake/test/mocks/UsdsJoinMock.sol";
 import { StakingRewardsMock } from "lib/lockstake/test/mocks/StakingRewardsMock.sol";
-import { MkrSkyMock } from "lib/lockstake/test/mocks/MkrSkyMock.sol";
 import { UniswapV2LockstakeCallee, TokenLike } from "src/UniswapV2LockstakeCallee.sol";
 
 interface MkrAuthorityLike {
@@ -58,7 +56,6 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
     DssInstance             dss;
     address                 pauseProxy;
     DSTokenAbstract         mkr;
-    LockstakeMkr            lsmkr;
     LockstakeEngine         engine;
     LockstakeClipper        clip;
     address                 calc;
@@ -69,7 +66,6 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
     GemMock                 rTok;
     StakingRewardsMock      farm;
     StakingRewardsMock      farm2;
-    MkrSkyMock              mkrSky;
     GemMock                 sky;
     bytes32                 ilk = "LSE";
     address                 voter;
@@ -88,47 +84,48 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
 
     event OnKick(address indexed urn, uint256 wad);
 
-    // Match https://github.com/makerdao/lockstake/blob/7c71318623f5d6732457fd0c247a1f1760960011/test/LockstakeEngine.t.sol#L87-L176
+    // Match https://github.com/makerdao/lockstake/blob/5c065eee4b048691c09a99cf5158b582eaf41ee8/test/LockstakeEngine.t.sol#L96-L181
     function setUp() public {
         vm.createSelectFork(vm.envString("ETH_RPC_URL"));
 
         dss = MCD.loadFromChainlog(LOG);
 
-        pauseProxy = dss.chainlog.getAddress("MCD_PAUSE_PROXY");
-        pip = MedianAbstract(dss.chainlog.getAddress("PIP_MKR"));
-        mkr = DSTokenAbstract(dss.chainlog.getAddress("MCD_GOV"));
-        usds = new UsdsMock();
-        usdsJoin = new UsdsJoinMock(address(dss.vat), address(usds));
-        rTok = new GemMock(0);
-        sky = new GemMock(0);
-        mkrSky = new MkrSkyMock(address(mkr), address(sky), 24_000);
-        vm.startPrank(pauseProxy);
-        MkrAuthorityLike(mkr.authority()).rely(address(mkrSky));
-        vm.stopPrank();
+        oldLsmkr = dss.chainlog.getAddress("LOCKSTAKE_MKR");
+        oldEngine = dss.chainlog.getAddress("LOCKSTAKE_ENGINE");
+        oldClip = dss.chainlog.getAddress("LOCKSTAKE_CLIP");
+        oldCalc = dss.chainlog.getAddress("LOCKSTAKE_CLIP_CALC");
 
-        voteDelegateFactory = new VoteDelegateFactoryMock(address(mkr));
+        pauseProxy = dss.chainlog.getAddress("MCD_PAUSE_PROXY");
+        pip = OsmAbstract(dss.chainlog.getAddress("PIP_MKR"));
+        sky = DSTokenAbstract(dss.chainlog.getAddress("SKY"));
+        usds = UsdsLike(dss.chainlog.getAddress("USDS"));
+        usdsJoin = dss.chainlog.getAddress("USDS_JOIN");
+        rTok = new GemMock(0);
+
+        voteDelegateFactory = new VoteDelegateFactoryMock(address(sky));
         voter = address(123);
         vm.prank(voter); voteDelegate = voteDelegateFactory.create();
 
         vm.prank(pauseProxy); pip.kiss(address(this));
-        vm.store(address(pip), bytes32(uint256(1)), bytes32(uint256(1_500 * 10**18)));
+        _setMedianPrice(1_500 * 10**18);
 
         LockstakeInstance memory instance = LockstakeDeploy.deployLockstake(
             address(this),
             pauseProxy,
             address(voteDelegateFactory),
-            address(usdsJoin),
             ilk,
-            address(mkrSky),
-            bytes4(abi.encodeWithSignature("newLinearDecrease(address)"))
+            15 * WAD / 100,
+            bytes4(abi.encodeWithSignature("newLinearDecrease(address)")),
+            dss.chainlog.getAddress("MKR_SKY")
         );
 
         engine = LockstakeEngine(instance.engine);
         clip = LockstakeClipper(instance.clipper);
         calc = instance.clipperCalc;
-        lsmkr = LockstakeMkr(instance.lsmkr);
-        farm = new StakingRewardsMock(address(rTok), address(lsmkr));
-        farm2 = new StakingRewardsMock(address(rTok), address(lsmkr));
+        migrator = LockstakeMigrator(instance.migrator);
+        lssky = LockstakeSky(instance.lssky);
+        farm = new StakingRewardsMock(address(rTok), address(lssky));
+        farm2 = new StakingRewardsMock(address(rTok), address(lssky));
 
         address[] memory farms = new address[](2);
         farms[0] = address(farm);
@@ -136,12 +133,6 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
 
         cfg = LockstakeConfig({
             ilk: ilk,
-            voteDelegateFactory: address(voteDelegateFactory),
-            usdsJoin: address(usdsJoin),
-            usds: address(usdsJoin.usds()),
-            mkr: address(mkr),
-            mkrSky: address(mkrSky),
-            sky: address(sky),
             farms: farms,
             fee: 15 * WAD / 100,
             maxLine: 10_000_000 * 10**45,
@@ -164,33 +155,34 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
             lineMom: true,
             tolerance: 0.5 * 10**27,
             name: "LOCKSTAKE",
-            symbol: "LMKR"
+            symbol: "LSSKY"
         });
 
         prevLine = dss.vat.Line();
 
         vm.startPrank(pauseProxy);
+        dss.chainlog.setAddress("VOTE_DELEGATE_FACTORY", address(voteDelegateFactory));
+        dss.chainlog.setAddress("PIP_SKY", address(pip));
         LockstakeInit.initLockstake(dss, instance, cfg);
         vm.stopPrank();
 
-        deal(address(mkr), address(this), 100_000 * 10**18, true);
-        deal(address(sky), address(this), 100_000 * 24_000 * 10**18, true);
+        deal(address(sky), address(this), 100_000 * 10**18, true);
 
         // Add some existing DAI assigned to usdsJoin to avoid a particular error
         stdstore.target(address(dss.vat)).sig("dai(address)").with_key(address(usdsJoin)).depth(0).checked_write(100_000 * RAD);
     }
 
-    // Match https://github.com/makerdao/lockstake/blob/7c71318623f5d6732457fd0c247a1f1760960011/test/LockstakeEngine.t.sol#L178-L180
+    // Match https://github.com/makerdao/lockstake/blob/5c065eee4b048691c09a99cf5158b582eaf41ee8/test/LockstakeEngine.t.sol#L183-L185
     function _ink(bytes32 ilk_, address urn) internal view returns (uint256 ink) {
         (ink,) = dss.vat.urns(ilk_, urn);
     }
 
-    // Match https://github.com/makerdao/lockstake/blob/7c71318623f5d6732457fd0c247a1f1760960011/test/LockstakeEngine.t.sol#L182-L184
+    // Match https://github.com/makerdao/lockstake/blob/5c065eee4b048691c09a99cf5158b582eaf41ee8/test/LockstakeEngine.t.sol#L187-L189
     function _art(bytes32 ilk_, address urn) internal view returns (uint256 art) {
         (, art) = dss.vat.urns(ilk_, urn);
     }
 
-    // Match https://github.com/makerdao/lockstake/blob/7c71318623f5d6732457fd0c247a1f1760960011/test/LockstakeEngine.t.sol#L1010-L1040
+    // Match https://github.com/makerdao/lockstake/blob/5c065eee4b048691c09a99cf5158b582eaf41ee8/test/LockstakeEngine.t.sol#L922-L951
     function _urnSetUp(bool withDelegate, bool withStaking) internal returns (address urn) {
         urn = engine.open(0);
         if (withDelegate) {
@@ -199,7 +191,7 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
         if (withStaking) {
             engine.selectFarm(address(this), 0, address(farm), 0);
         }
-        mkr.approve(address(engine), 100_000 * 10**18);
+        sky.approve(address(engine), 100_000 * 10**18);
         engine.lock(address(this), 0, 100_000 * 10**18, 5);
         engine.draw(address(this), 0, address(this), 2_000 * 10**18);
         assertEq(_ink(ilk, urn), 100_000 * 10**18);
@@ -207,24 +199,24 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
 
         if (withDelegate) {
             assertEq(engine.urnVoteDelegates(urn), voteDelegate);
-            assertEq(mkr.balanceOf(voteDelegate), 100_000 * 10**18);
-            assertEq(mkr.balanceOf(address(engine)), 0);
+            assertEq(sky.balanceOf(voteDelegate), 100_000 * 10**18);
+            assertEq(sky.balanceOf(address(engine)), 0);
         } else {
             assertEq(engine.urnVoteDelegates(urn), address(0));
-            assertEq(mkr.balanceOf(address(engine)), 100_000 * 10**18);
+            assertEq(sky.balanceOf(address(engine)), 100_000 * 10**18);
         }
         if (withStaking) {
-            assertEq(lsmkr.balanceOf(address(urn)), 0);
-            assertEq(lsmkr.balanceOf(address(farm)), 100_000 * 10**18);
+            assertEq(lssky.balanceOf(address(urn)), 0);
+            assertEq(lssky.balanceOf(address(farm)), 100_000 * 10**18);
             assertEq(farm.balanceOf(address(urn)), 100_000 * 10**18);
         } else {
-            assertEq(lsmkr.balanceOf(address(urn)), 100_000 * 10**18);
+            assertEq(lssky.balanceOf(address(urn)), 100_000 * 10**18);
         }
     }
 
-    // Match https://github.com/makerdao/lockstake/blob/735e1e85ca706534a77d8e1582df0d3248cbd2b6/test/LockstakeEngine.t.sol#L993-L1005
+    // Match https://github.com/makerdao/lockstake/blob/5c065eee4b048691c09a99cf5158b582eaf41ee8/test/LockstakeEngine.t.sol#L953-L965
     function _forceLiquidation(address urn) internal returns (uint256 id) {
-        vm.store(address(pip), bytes32(uint256(1)), bytes32(uint256(0.05 * 10**18))); // Force liquidation
+        _setMedianPrice(0.05 * 10**18); // Force liquidation
         dss.spotter.poke(ilk);
         assertEq(clip.kicks(), 0);
         assertEq(engine.urnAuctions(urn), 0);
@@ -237,6 +229,15 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
         assertEq(engine.urnAuctions(urn), 1);
     }
 
+    // Match https://github.com/makerdao/lockstake/blob/5c065eee4b048691c09a99cf5158b582eaf41ee8/test/LockstakeEngine.t.sol#L88-L94
+    function _setMedianPrice(uint256 price) internal {
+        vm.store(pip.src(), bytes32(uint256(1)), bytes32(price));
+        vm.warp(block.timestamp + 1 hours);
+        pip.poke();
+        vm.warp(block.timestamp + 1 hours);
+        pip.poke();
+    }
+
     // Callee-specific setup function
     function setUpCallee() internal {
         // set up additional global variables
@@ -247,7 +248,7 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
         uniRouter02 = new MockUniswapRouter02(uniV2Price);
 
         // Deploy callee contract
-        callee = new UniswapV2LockstakeCallee(address(uniRouter02), daiJoin, address(usdsJoin), address(mkrSky));
+        callee = new UniswapV2LockstakeCallee(address(uniRouter02), daiJoin, address(usdsJoin), address(sky));
     }
 
     // Test is based on the `_testOnTake` https://github.com/makerdao/lockstake/blob/7c71318623f5d6732457fd0c247a1f1760960011/test/LockstakeEngine.t.sol#L1152-L1250
@@ -331,94 +332,34 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
         assertEq(dst.balanceOf(profitAddress), expectedProfit, "invalid-final-profit");
     }
 
-    // --- Callee tests using MKR/DAI path ---
-
-    function testCalleeTake_NoDelegate_NoStaking_MkrDai() public {
-        setUpCallee();
-        uniV2Path[0] = address(mkr);
-        uniV2Path[1] = address(dai);
-        _testCalleeTake(false, false, uniV2Path, uniV2Price);
-    }
-
-    function testCalleeTake_WithDelegate_NoStaking_MkrDai() public {
-        setUpCallee();
-        uniV2Path[0] = address(mkr);
-        uniV2Path[1] = address(dai);
-        _testCalleeTake(true, false, uniV2Path, uniV2Price);
-    }
-
-    function testCalleeTake_NoDelegate_WithStaking_MkrDai() public {
-        setUpCallee();
-        uniV2Path[0] = address(mkr);
-        uniV2Path[1] = address(dai);
-        _testCalleeTake(false, true, uniV2Path, uniV2Price);
-    }
-
-    function testCalleeTake_WithDelegate_WithStaking_MkrDai() public {
-        setUpCallee();
-        uniV2Path[0] = address(mkr);
-        uniV2Path[1] = address(dai);
-        _testCalleeTake(true, true, uniV2Path, uniV2Price);
-    }
-
-    // --- Callee tests using MKR/USDS path ---
-
-    function testCalleeTake_NoDelegate_NoStaking_MkrUsds() public {
-        setUpCallee();
-        uniV2Path[0] = address(mkr);
-        uniV2Path[1] = address(usds);
-        _testCalleeTake(false, false, uniV2Path, uniV2Price);
-    }
-
-    function testCalleeTake_WithDelegate_NoStaking_MkrUsds() public {
-        setUpCallee();
-        uniV2Path[0] = address(mkr);
-        uniV2Path[1] = address(usds);
-        _testCalleeTake(true, false, uniV2Path, uniV2Price);
-    }
-
-    function testCalleeTake_NoDelegate_WithStaking_MkrUsds() public {
-        setUpCallee();
-        uniV2Path[0] = address(mkr);
-        uniV2Path[1] = address(usds);
-        _testCalleeTake(false, true, uniV2Path, uniV2Price);
-    }
-
-    function testCalleeTake_WithDelegate_WithStaking_MkrUsds() public {
-        setUpCallee();
-        uniV2Path[0] = address(mkr);
-        uniV2Path[1] = address(usds);
-        _testCalleeTake(true, true, uniV2Path, uniV2Price);
-    }
-
     // --- Callee tests using SKY/USDS path ---
 
     function testCalleeTake_NoDelegate_NoStaking_SkyUsds() public {
         setUpCallee();
         uniV2Path[0] = address(sky);
         uniV2Path[1] = address(usds);
-        _testCalleeTake(false, false, uniV2Path, uniV2Price * mkrSky.rate());
+        _testCalleeTake(false, false, uniV2Path, uniV2Price);
     }
 
     function testCalleeTake_WithDelegate_NoStaking_SkyUsds() public {
         setUpCallee();
         uniV2Path[0] = address(sky);
         uniV2Path[1] = address(usds);
-        _testCalleeTake(true, false, uniV2Path, uniV2Price * mkrSky.rate());
+        _testCalleeTake(true, false, uniV2Path, uniV2Price);
     }
 
     function testCalleeTake_NoDelegate_WithStaking_SkyUsds() public {
         setUpCallee();
         uniV2Path[0] = address(sky);
         uniV2Path[1] = address(usds);
-        _testCalleeTake(false, true, uniV2Path, uniV2Price * mkrSky.rate());
+        _testCalleeTake(false, true, uniV2Path, uniV2Price);
     }
 
     function testCalleeTake_WithDelegate_WithStaking_SkyUsds() public {
         setUpCallee();
         uniV2Path[0] = address(sky);
         uniV2Path[1] = address(usds);
-        _testCalleeTake(true, true, uniV2Path, uniV2Price * mkrSky.rate());
+        _testCalleeTake(true, true, uniV2Path, uniV2Price);
     }
 
     // --- Callee tests using SKY/DAI path ---
@@ -427,27 +368,27 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
         setUpCallee();
         uniV2Path[0] = address(sky);
         uniV2Path[1] = address(dai);
-        _testCalleeTake(false, false, uniV2Path, uniV2Price * mkrSky.rate());
+        _testCalleeTake(false, false, uniV2Path, uniV2Price);
     }
 
     function testCalleeTake_WithDelegate_NoStaking_SkyDai() public {
         setUpCallee();
         uniV2Path[0] = address(sky);
         uniV2Path[1] = address(dai);
-        _testCalleeTake(true, false, uniV2Path, uniV2Price * mkrSky.rate());
+        _testCalleeTake(true, false, uniV2Path, uniV2Price);
     }
 
     function testCalleeTake_NoDelegate_WithStaking_SkyDai() public {
         setUpCallee();
         uniV2Path[0] = address(sky);
         uniV2Path[1] = address(dai);
-        _testCalleeTake(false, true, uniV2Path, uniV2Price * mkrSky.rate());
+        _testCalleeTake(false, true, uniV2Path, uniV2Price);
     }
 
     function testCalleeTake_WithDelegate_WithStaking_SkyDai() public {
         setUpCallee();
         uniV2Path[0] = address(sky);
         uniV2Path[1] = address(dai);
-        _testCalleeTake(true, true, uniV2Path, uniV2Price * mkrSky.rate());
+        _testCalleeTake(true, true, uniV2Path, uniV2Price);
     }
 }
