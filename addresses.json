@@ -5,7 +5,7 @@
         "UniswapV3Callee": "0xdB9C76109d102d2A1E645dCa3a7E671EBfd8e11A",
         "WstETHCurveUniv3Callee": "0x21540b2653FeBa52eE2c8714CA7Abfb522bb5e8C",
         "CurveLpTokenUniv3Callee": "0x71f2198849F3B1372EA90c079BD634928583f2d2",
-        "UniswapV2LockstakeCallee": "0xf68424845e4Af5b771356d504965A3c9257805f3"
+        "UniswapV2LockstakeCalleeOldV1": "0xf68424845e4Af5b771356d504965A3c9257805f3"
     },
     "0x5": {
         "UniswapV2CalleeDai": "0x6d9139ac89ad2263f138633de20e47bcae253938",
