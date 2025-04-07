@@ -50,12 +50,10 @@ contract UniswapV2LockstakeCallee {
     TokenLike               public immutable dai;
     UsdsJoinLike            public immutable usdsJoin;
     TokenLike               public immutable usds;
-    MkrSky                  public immutable mkrSky;
-    TokenLike               public immutable mkr;
     TokenLike               public immutable sky;
     uint256                 public constant RAY = 10 ** 27;
 
-    constructor(address uniRouter02_, address daiJoin_, address usdsJoin_, address mkrSky_) {
+    constructor(address uniRouter02_, address daiJoin_, address usdsJoin_, address sky_) {
         uniRouter02 = UniswapV2Router02Like(uniRouter02_);
 
         daiJoin = DaiJoinLike(daiJoin_);
@@ -66,9 +64,7 @@ contract UniswapV2LockstakeCallee {
         usds = TokenLike(usdsJoin.usds());
         usds.approve(usdsJoin_, type(uint256).max);
 
-        mkrSky = MkrSky(mkrSky_);
-        mkr = TokenLike(mkrSky.mkr());
-        sky = TokenLike(mkrSky.sky());
+        sky = TokenLike(sky_);
     }
 
     function divup(uint256 x, uint256 y) internal pure returns (uint256 z) {
@@ -87,17 +83,8 @@ contract UniswapV2LockstakeCallee {
             address[] memory path // Uniswap pool path
         ) = abi.decode(data, (address, uint256, address[]));
 
-        // Support SKY
-        TokenLike gem = mkr;
-        if (path[0] == address(sky)) {
-            gem = sky;
-            mkr.approve(address(mkrSky), gemAmt);
-            mkrSky.mkrToSky(address(this), gemAmt);
-            gemAmt = gemAmt * mkrSky.rate();
-        }
-
         // Approve uniRouter02 to take gem
-        gem.approve(address(uniRouter02), gemAmt);
+        sky.approve(address(uniRouter02), gemAmt);
 
         // Calculate amount of tokens to Join (as erc20 WAD value)
         uint256 amtToJoin = divup(dstAmt, RAY);
@@ -112,9 +99,9 @@ contract UniswapV2LockstakeCallee {
         );
 
         // Although Uniswap will accept all gems, this check is a sanity check, just in case
-        if (gem.balanceOf(address(this)) > 0) {
+        if (sky.balanceOf(address(this)) > 0) {
             // Transfer any lingering gem to specified address
-            gem.transfer(to, gem.balanceOf(address(this)));
+            sky.transfer(to, sky.balanceOf(address(this)));
         }
 
         // Determine destination token
