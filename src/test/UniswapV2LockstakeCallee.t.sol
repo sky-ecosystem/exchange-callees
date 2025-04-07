@@ -7,6 +7,7 @@ import "dss-interfaces/Interfaces.sol";
 
 import { LockstakeDeploy } from "lib/lockstake/deploy/LockstakeDeploy.sol";
 import { LockstakeInit, LockstakeConfig, LockstakeInstance } from "lib/lockstake/deploy/LockstakeInit.sol";
+import { LockstakeSky } from "lib/lockstake/src/LockstakeSky.sol";
 import { LockstakeEngine } from "lib/lockstake/src/LockstakeEngine.sol";
 import { LockstakeClipper } from "lib/lockstake/src/LockstakeClipper.sol";
 import { LockstakeUrn } from "lib/lockstake/src/LockstakeUrn.sol";
@@ -56,6 +57,7 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
     DssInstance             dss;
     address                 pauseProxy;
     DSTokenAbstract         mkr;
+    LockstakeSky            lssky;
     LockstakeEngine         engine;
     LockstakeClipper        clip;
     address                 calc;
