@@ -2,21 +2,21 @@
 
 pragma solidity ^0.8.21;
 
-import "lib/lockstake/lib/token-tests/lib/dss-test/src/DssTest.sol";
+import "lib/lockstake-old-v1/lib/token-tests/lib/dss-test/src/DssTest.sol";
 import "dss-interfaces/Interfaces.sol";
 
-import { LockstakeDeploy } from "lib/lockstake/deploy/LockstakeDeploy.sol";
-import { LockstakeInit, LockstakeConfig, LockstakeInstance } from "lib/lockstake/deploy/LockstakeInit.sol";
-import { LockstakeMkr } from "lib/lockstake/src/LockstakeMkr.sol";
-import { LockstakeEngine } from "lib/lockstake/src/LockstakeEngine.sol";
-import { LockstakeClipper } from "lib/lockstake/src/LockstakeClipper.sol";
-import { LockstakeUrn } from "lib/lockstake/src/LockstakeUrn.sol";
-import { VoteDelegateFactoryMock, VoteDelegateMock } from "lib/lockstake/test/mocks/VoteDelegateMock.sol";
-import { GemMock } from "lib/lockstake/test/mocks/GemMock.sol";
-import { UsdsMock } from "lib/lockstake/test/mocks/UsdsMock.sol";
-import { UsdsJoinMock } from "lib/lockstake/test/mocks/UsdsJoinMock.sol";
-import { StakingRewardsMock } from "lib/lockstake/test/mocks/StakingRewardsMock.sol";
-import { MkrSkyMock } from "lib/lockstake/test/mocks/MkrSkyMock.sol";
+import { LockstakeDeploy } from "lib/lockstake-old-v1/deploy/LockstakeDeploy.sol";
+import { LockstakeInit, LockstakeConfig, LockstakeInstance } from "lib/lockstake-old-v1/deploy/LockstakeInit.sol";
+import { LockstakeMkr } from "lib/lockstake-old-v1/src/LockstakeMkr.sol";
+import { LockstakeEngine } from "lib/lockstake-old-v1/src/LockstakeEngine.sol";
+import { LockstakeClipper } from "lib/lockstake-old-v1/src/LockstakeClipper.sol";
+import { LockstakeUrn } from "lib/lockstake-old-v1/src/LockstakeUrn.sol";
+import { VoteDelegateFactoryMock, VoteDelegateMock } from "lib/lockstake-old-v1/test/mocks/VoteDelegateMock.sol";
+import { GemMock } from "lib/lockstake-old-v1/test/mocks/GemMock.sol";
+import { UsdsMock } from "lib/lockstake-old-v1/test/mocks/UsdsMock.sol";
+import { UsdsJoinMock } from "lib/lockstake-old-v1/test/mocks/UsdsJoinMock.sol";
+import { StakingRewardsMock } from "lib/lockstake-old-v1/test/mocks/StakingRewardsMock.sol";
+import { MkrSkyMock } from "lib/lockstake-old-v1/test/mocks/MkrSkyMock.sol";
 import { UniswapV2LockstakeCallee, TokenLike } from "src/UniswapV2LockstakeCallee.sol";
 
 interface MkrAuthorityLike {
