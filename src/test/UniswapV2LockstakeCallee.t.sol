@@ -11,6 +11,7 @@ import { LockstakeSky } from "lib/lockstake/src/LockstakeSky.sol";
 import { LockstakeEngine } from "lib/lockstake/src/LockstakeEngine.sol";
 import { LockstakeClipper } from "lib/lockstake/src/LockstakeClipper.sol";
 import { LockstakeUrn } from "lib/lockstake/src/LockstakeUrn.sol";
+import { LockstakeMigrator } from "lib/lockstake/src/LockstakeMigrator.sol";
 import { VoteDelegateFactoryMock, VoteDelegateMock } from "lib/lockstake/test/mocks/VoteDelegateMock.sol";
 import { GemMock } from "lib/lockstake/test/mocks/GemMock.sol";
 import { UsdsMock } from "lib/lockstake/test/mocks/UsdsMock.sol";
@@ -18,8 +19,10 @@ import { UsdsJoinMock } from "lib/lockstake/test/mocks/UsdsJoinMock.sol";
 import { StakingRewardsMock } from "lib/lockstake/test/mocks/StakingRewardsMock.sol";
 import { UniswapV2LockstakeCallee, TokenLike } from "src/UniswapV2LockstakeCallee.sol";
 
-interface MkrAuthorityLike {
-    function rely(address) external;
+interface UsdsLike {
+    function allowance(address, address) external view returns (uint256);
+    function balanceOf(address) external view returns (uint256);
+    function approve(address, uint256) external;
 }
 
 contract MockUniswapRouter02 is DssTest {
@@ -55,21 +58,25 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
     using stdStorage for StdStorage;
 
     DssInstance             dss;
+    address                 oldLsmkr;
+    address                 oldEngine;
+    address                 oldClip;
+    address                 oldCalc;
     address                 pauseProxy;
-    DSTokenAbstract         mkr;
+    DSTokenAbstract         sky;
     LockstakeSky            lssky;
     LockstakeEngine         engine;
     LockstakeClipper        clip;
     address                 calc;
+    LockstakeMigrator       migrator;
     MedianAbstract          pip;
     VoteDelegateFactoryMock voteDelegateFactory;
-    UsdsMock                usds;
-    UsdsJoinMock            usdsJoin;
+    UsdsLike                usds;
+    address                 usdsJoin;
     GemMock                 rTok;
     StakingRewardsMock      farm;
     StakingRewardsMock      farm2;
-    GemMock                 sky;
-    bytes32                 ilk = "LSE";
+    bytes32                 ilk = "LSEV2-A";
     address                 voter;
     address                 voteDelegate;
     LockstakeConfig         cfg;
@@ -253,7 +260,7 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
         callee = new UniswapV2LockstakeCallee(address(uniRouter02), daiJoin, address(usdsJoin), address(sky));
     }
 
-    // Test is based on the `_testOnTake` https://github.com/makerdao/lockstake/blob/7c71318623f5d6732457fd0c247a1f1760960011/test/LockstakeEngine.t.sol#L1152-L1250
+    // Test is based on the `_testOnTake` https://github.com/makerdao/lockstake/blob/5c065eee4b048691c09a99cf5158b582eaf41ee8/test/LockstakeEngine.t.sol#L1064-L1162
     function _testCalleeTake(bool withDelegate, bool withStaking, address[] memory path, uint256 exchangeRate) internal {
         // Setup urn and force its liquidation
         address urn = _urnSetUp(withDelegate, withStaking);
@@ -265,7 +272,7 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
         // Setup buyer
         address buyer1 = address(111);
         vm.prank(buyer1); dss.vat.hope(address(clip));
-        assertEq(mkr.balanceOf(buyer1), 0, 'unexpected-initial-buyer1-mkr-balance');
+        assertEq(sky.balanceOf(buyer1), 0, 'unexpected-initial-buyer1-sky-balance');
         assertEq(dst.balanceOf(buyer1), 0, 'unexpected-initial-buyer1-dst-balance');
 
         // Partial profit
@@ -300,15 +307,15 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
             address(callee),   // Receiver of collateral and external call address
             flashData          // Data to pass in external call; if length 0, no call is done
         );
-        assertEq(mkr.balanceOf(address(callee)), 0, "invalid-callee-mkr-balance");
+        assertEq(sky.balanceOf(address(callee)), 0, "invalid-callee-sky-balance");
         assertEq(dst.balanceOf(address(callee)), 0, "invalid-callee-dst-balance");
-        assertEq(mkr.balanceOf(buyer1), 0, "invalid-final-buyer1-mkr-balance");
+        assertEq(sky.balanceOf(buyer1), 0, "invalid-final-buyer1-sky-balance");
         assertEq(dst.balanceOf(buyer1), expectedProfit, "invalid-final-buyer1-dst-balance");
 
         // Setup different buyer to take the rest of the auction
         address buyer2 = address(222);
         vm.prank(buyer2); dss.vat.hope(address(clip));
-        assertEq(mkr.balanceOf(buyer2), 0, "unexpected-initial-buyer2-mkr-balance");
+        assertEq(sky.balanceOf(buyer2), 0, "unexpected-initial-buyer2-sky-balance");
         assertEq(dst.balanceOf(buyer2), 0, "unexpected-initial-buyer2-dst-balance");
         address profitAddress = address(333);
         assertEq(dst.balanceOf(profitAddress), 0, "unexpected-initial-profit-dst-balance");
@@ -328,9 +335,9 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
             address(callee),   // Receiver of collateral and external call address
             flashData          // Data to pass in external call; if length 0, no call is done
         );
-        assertEq(mkr.balanceOf(address(callee)), 0, "invalid-callee-mkr-balance");
+        assertEq(sky.balanceOf(address(callee)), 0, "invalid-callee-sky-balance");
         assertEq(dst.balanceOf(address(callee)), 0, "invalid-callee-dst-balance");
-        assertEq(mkr.balanceOf(buyer2), 0, "invalid-final-buyer2-mkr-balance");
+        assertEq(sky.balanceOf(buyer2), 0, "invalid-final-buyer2-sky-balance");
         assertEq(dst.balanceOf(profitAddress), expectedProfit, "invalid-final-profit");
     }
 
