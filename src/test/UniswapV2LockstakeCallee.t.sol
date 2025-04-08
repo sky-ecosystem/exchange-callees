@@ -69,7 +69,7 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
     LockstakeClipper        clip;
     address                 calc;
     LockstakeMigrator       migrator;
-    MedianAbstract          pip;
+    OsmAbstract             pip;
     VoteDelegateFactoryMock voteDelegateFactory;
     UsdsLike                usds;
     address                 usdsJoin;
@@ -277,7 +277,7 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
 
         // Partial profit
         uint256 amtToBuy = 20_000;
-        uint256 expectedProfit = (amtToBuy * 10**18) * exchangeRate - amtToBuy * pip.read() * clip.buf() / RAY;
+        uint256 expectedProfit = (amtToBuy * 10**18) * exchangeRate - amtToBuy * uint256(pip.read()) * clip.buf() / RAY;
 
         // Expect revert if minimumDaiProfit set too high
         bytes memory flashData = abi.encode(
@@ -322,7 +322,7 @@ contract UniswapV2LockstakeCalleeTest is DssTest {
 
         // Take the rest of the auction with callee
         amtToBuy = 12_000;
-        expectedProfit = (amtToBuy * 10**18) * exchangeRate - amtToBuy * pip.read() * clip.buf() / RAY;
+        expectedProfit = (amtToBuy * 10**18) * exchangeRate - amtToBuy * uint256(pip.read()) * clip.buf() / RAY;
         flashData = abi.encode(
             address(profitAddress), // Address of the user (where profits are sent)
             expectedProfit,         // Minimum dai profit [wad]
