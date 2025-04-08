@@ -25,6 +25,3 @@
 [submodule "lib/lockstake"]
 	path = lib/lockstake
 	url = https://github.com/makerdao/lockstake
-[submodule "lib/lockstake-old-v1"]
-	path = lib/lockstake-old-v1
-	url = https://github.com/makerdao/lockstake 
