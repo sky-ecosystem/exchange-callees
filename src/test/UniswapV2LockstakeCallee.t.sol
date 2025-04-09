@@ -10,12 +10,9 @@ import { LockstakeInit, LockstakeConfig, LockstakeInstance } from "lib/lockstake
 import { LockstakeSky } from "lib/lockstake/src/LockstakeSky.sol";
 import { LockstakeEngine } from "lib/lockstake/src/LockstakeEngine.sol";
 import { LockstakeClipper } from "lib/lockstake/src/LockstakeClipper.sol";
-import { LockstakeUrn } from "lib/lockstake/src/LockstakeUrn.sol";
 import { LockstakeMigrator } from "lib/lockstake/src/LockstakeMigrator.sol";
-import { VoteDelegateFactoryMock, VoteDelegateMock } from "lib/lockstake/test/mocks/VoteDelegateMock.sol";
+import { VoteDelegateFactoryMock } from "lib/lockstake/test/mocks/VoteDelegateMock.sol";
 import { GemMock } from "lib/lockstake/test/mocks/GemMock.sol";
-import { UsdsMock } from "lib/lockstake/test/mocks/UsdsMock.sol";
-import { UsdsJoinMock } from "lib/lockstake/test/mocks/UsdsJoinMock.sol";
 import { StakingRewardsMock } from "lib/lockstake/test/mocks/StakingRewardsMock.sol";
 import { UniswapV2LockstakeCallee, TokenLike } from "src/UniswapV2LockstakeCallee.sol";
 
