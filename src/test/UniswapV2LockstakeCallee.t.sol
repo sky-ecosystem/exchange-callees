@@ -17,7 +17,6 @@ import { StakingRewardsMock } from "lib/lockstake/test/mocks/StakingRewardsMock.
 import { UniswapV2LockstakeCallee, TokenLike } from "src/UniswapV2LockstakeCallee.sol";
 
 interface UsdsLike {
-    function allowance(address, address) external view returns (uint256);
     function balanceOf(address) external view returns (uint256);
     function approve(address, uint256) external;
 }
