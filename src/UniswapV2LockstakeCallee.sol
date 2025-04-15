@@ -37,13 +37,6 @@ interface UsdsJoinLike {
     function join(address, uint256) external;
 }
 
-interface MkrSky {
-    function mkr() external view returns (address);
-    function sky() external view returns (address);
-    function rate() external view returns (uint256);
-    function mkrToSky(address, uint256) external;
-}
-
 contract UniswapV2LockstakeCallee {
     UniswapV2Router02Like   public immutable uniRouter02;
     DaiJoinLike             public immutable daiJoin;
